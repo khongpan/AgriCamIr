@@ -1,6 +1,9 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <time.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#include <esp_task_wdt.h>
 
 //#include "soc/soc.h"           // Disable brown out problems
 //#include "soc/rtc_cntl_reg.h"  // Disable brown out problems
@@ -9,6 +12,7 @@
 //#include "Camera.h"
 #include "WebPost.h"
 #include "MLX90621.h"
+#include "toojpeg.h"
 
 //
 // WARNING!!! Make sure that you have either selected ESP32 Wrover Module,
@@ -16,10 +20,10 @@
 //
 
 #define LED 33
-String my_id_str = "__agricam03__1000__100";
+String my_id_str = "__agricam00__1000__100";
 String pict_folder = "/pict/";
-const char* ssid = "FlyFly";
-const char* password = "flyuntildie";
+const char* ssid = "SSID";
+const char* password = "magicword";
 
 
 void startCameraServer();
@@ -94,6 +98,14 @@ void TimeSync() {
 
 }
 
+void task_main(void *p) {
+  esp_task_wdt_delete(NULL);  
+  while(1) {
+    esp_task_wdt_reset();
+    do_job();
+  }
+}
+
 
 void setup() {
 
@@ -116,8 +128,11 @@ void setup() {
   Serial.print(WiFi.localIP());
   Serial.println("' to connect");
 
+  static TaskHandle_t loopTaskHandle = NULL;
+  xTaskCreateUniversal(task_main, "task_main", 100000, NULL, 1, &loopTaskHandle, CONFIG_ARDUINO_RUNNING_CORE);
+ 
 }
-
+ 
 
 
 
@@ -137,9 +152,24 @@ String GetCurrentTimeString() {
 
 
 
+
 int pic_cnt=0;
 int capture_retry=0;
+unsigned char pict_buff[1024];
+int buff_index=0;
+void write_pict_buff(unsigned char byte) {
+  pict_buff[buff_index++]=byte;
+  //Serial.print(byte);
+}
+void reset_pict_buff() {
+  buff_index=0;
+}
+
 void loop() {
+  delay(1000);
+}
+
+void do_job() {
 
   NetMaintain();
 
@@ -161,21 +191,24 @@ void loop() {
       //if (((t.tm_min % 5 != 4) || (t.tm_sec != 55))) return;
       //if (((t.tm_min % 15 != 14) || (t.tm_sec != 55))) return;
       //if (((t.tm_min  != 0) || (t.tm_sec != 0))) return; //every hour
-      //if (t.tm_sec != 0) return; //every minute
-      if (t.tm_sec%10 !=0) return;
+      if (t.tm_sec != 0) return; //every minute
+      //if (t.tm_sec%10 !=0) return;
     }
   }
 
 
   if (capture_retry>=3) {
     capture_retry = 0;
+    delay(1000);
+    return;
     //put code to init camera here
     //ESP.restart();
     
   }
 
   //camera_fb_t *fb= (camera_fb_t *)1;
-  void *fb=(void *)1;
+  //void *fb=(void *)1;
+  MLX90621_img_t *img;
   
   String time_str= GetCurrentTimeString();
   String img_name = time_str + my_id_str + ".jpg";
@@ -183,11 +216,27 @@ void loop() {
   //CameraFlash(1);
   //fb=CameraCapture();
   //CameraFlash(0);
-  MLX90621GetImage();
-  delay(1000);
-  //return;
 
-  if (fb==NULL)  {
+  
+  img=MLX90621Capture();
+  
+  reset_pict_buff();
+  static char comments[] = "MLX90621 image";
+  if (TooJpeg::writeJpeg(write_pict_buff,img->buf,img->width,img->height,true,90,false, comments)) {
+    img->buf=pict_buff;
+    img->len=buff_index;
+    Serial.printf("converted jpg size %d \r\n",buff_index);
+    delay(1000);
+    //return;
+  }else{
+    Serial.printf("converted jpg failed\r\n");
+    Serial.printf("f%x b%x w%d h%d\r\n",write_pict_buff,img->buf,img->width,img->height);
+    img=NULL;
+  }
+  
+
+  if (img==NULL)  {
+    if(pic_cnt==0) pic_cnt++;
     capture_retry++;
     return;
   }
@@ -207,6 +256,7 @@ void loop() {
     send_try++;
     Serial.println("try " + String(send_try));
     //res=WebPostSendImage(img_name,time_str,fb->buf,fb->len);
+    res=WebPostSendImage(img_name,time_str,img->buf,img->len);
     Serial.println("Server Response:");
     Serial.print(res);
   } while(res!="ok" && (send_try < 10));

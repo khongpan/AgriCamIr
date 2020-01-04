@@ -105,7 +105,7 @@ enum resolution {  // define IR Array resolution
 };
 
 // Define configuration
-  uint8_t refreshRate = IRRRate_4Hz; // set IR Array refresh rate
+  uint8_t refreshRate = IRRRate_1Hz; // set IR Array refresh rate
   uint8_t resolution =  ADC_18bit;   // set temperature resolution
   
 void MLX90621Setup() 
@@ -133,7 +133,7 @@ void MLX90621Setup()
 }
 /* End of setup*/
 
-void MLX90621GetImage() 
+MLX90621_img_t* MLX90621Capture() 
 {
     if(!(readConfiguration() & 0x0400)){ // if POR bit cleared, reinitialize
       readEEPROM();
@@ -153,17 +153,22 @@ void MLX90621GetImage()
     minTemp = 1000.;
     maxTemp =    0.;
     float avgTemp=0;
-    for(int y=0; y <4; y++){ //go through all the rows
-      for(int x=0; x<16; x++){ //go through all the columns
+    for(int x=0; x <16 ; x++){ //go through all the rows
+      for(int y=0; y<4; y++){ //go through all the columns
         if(temperatures[y+x*4] > maxTemp) maxTemp = temperatures[y+x*4];
         if(temperatures[y+x*4] < minTemp) minTemp = temperatures[y+x*4];
         avgTemp+=temperatures[y+x*4];
+        Serial.printf("pixel %02d %2.1f",y+x*4,temperatures[y+x*4]);
       }
+        Serial.println("");
     }
     avgTemp = avgTemp/(4*16);
     Serial.print("Min temperature="); Serial.println(minTemp);
     Serial.print("Max temperature="); Serial.println(maxTemp);
     Serial.print("Average temperature="); Serial.println(avgTemp);
+
+    //return createTGAImage();
+    return createRGBImage();
 
     //delay(100);  // give some time to see the screen values
 }
@@ -178,15 +183,15 @@ void MLX90621GetImage()
 */
   void readEEPROM()
   {// Read the entire EEPROM
-  for(int j=0; j<256; j+=32) {
-    Wire.beginTransmission(EEPROM_ADDRESS);
-    Wire.write(j);
-    byte rc = Wire.endTransmission(I2C_NOSTOP);
-    Wire.requestFrom(EEPROM_ADDRESS, 32);
-    for (int i = 0; i < 32; i++) {
-      eepromData[j+i] = (uint8_t) Wire.read();
+    for(int j=0; j<256; j+=32) {
+      Wire.beginTransmission(EEPROM_ADDRESS);
+      Wire.write(j);
+      byte rc = Wire.endTransmission(I2C_NOSTOP);
+      Wire.requestFrom(EEPROM_ADDRESS, 32);
+      for (int i = 0; i < 32; i++) {
+        eepromData[j+i] = (uint8_t) Wire.read();
+      }
     }
-  }
   }
   
 void writeConfiguration()
@@ -437,7 +442,7 @@ void I2Cscan()
   return data;                             // Return data read from slave register
 }
 
-  void readBytes(uint8_t address, uint8_t subAddress, uint8_t count, uint8_t * dest)
+void readBytes(uint8_t address, uint8_t subAddress, uint8_t count, uint8_t * dest)
 {  
   Wire.beginTransmission(address);   // Initialize the Tx buffer
   Wire.write(subAddress);            // Put slave register address in Tx buffer
@@ -447,3 +452,117 @@ void I2Cscan()
   while (Wire.available()) {
         dest[i++] = Wire.read(); }         // Put read results in the Rx buffer
 }
+
+// adapted from http://www.andrewnoske.com/wiki/Code_-_heatmaps_and_color_gradients
+void getHeatMapColor(float value, float *red, float *green, float *blue)
+{
+  const int NUM_COLORS = 5;
+  static float color[NUM_COLORS][3] = { {0,0,1}, {0,1,1}, {0,1,0}, {1,1,0}, {1,0,0} };
+    // A static array of 4 colors:  (blue,   green,  yellow,  red) using {r,g,b} for each.
+  
+  int idx1;        // |-- Our desired color will be between these two indexes in "color".
+  int idx2;        // |
+  float fractBetween = 0;  // Fraction between "idx1" and "idx2" where our value is.
+  
+  if(value <= 0)      {  idx1 = idx2 = 0;            }    // accounts for an input <=0
+  else if(value >= 1)  {  idx1 = idx2 = NUM_COLORS-1; }    // accounts for an input >=0
+  else
+  {
+    value = value * (NUM_COLORS-1);        // Will multiply value by 3.
+    idx1  = floor(value);                  // Our desired color will be after this index.
+    idx2  = idx1+1;                        // ... and before this index (inclusive).
+    fractBetween = value - float(idx1);    // Distance between the two indexes (0-1).
+  }
+    
+  *red   = (color[idx2][0] - color[idx1][0])*fractBetween + color[idx1][0];
+  *green = (color[idx2][1] - color[idx1][1])*fractBetween + color[idx1][1];
+  *blue  = (color[idx2][2] - color[idx1][2])*fractBetween + color[idx1][2];
+}
+
+#define MAX_TEMP 35
+#define MIN_TEMP 15
+void mapDegree2Color(float temp,unsigned char *r,unsigned char *g, unsigned char *b) {
+  float rr,gg,bb;
+  float temp_n;
+
+  if(temp>MAX_TEMP) temp=MAX_TEMP;
+  if(temp<MIN_TEMP) temp=MIN_TEMP;
+
+  temp_n=(temp-MIN_TEMP)/(MAX_TEMP-MIN_TEMP);
+
+  getHeatMapColor(temp_n,&rr,&gg,&bb);
+  *r= (unsigned char)round(rr*255);
+  *g= (unsigned char)round(gg*255);
+  *b= (unsigned char)round(bb*255);
+
+
+
+}
+
+/*
+void mapDegree2Color(float temp,unsigned char *r,unsigned char *g, unsigned char *b) {
+  *r = temp*255/50.0;
+  *g = 0;
+  *b = 0;
+}
+*/
+
+
+enum { img_width = 4, img_height = 16 };
+static unsigned char imageBuff[18+img_width*img_height*3];
+static MLX90621_img_t ir_img;
+MLX90621_img_t *createTGAImage(void) {
+
+  unsigned char *pixels= imageBuff+18;
+  unsigned char *tga = imageBuff;
+  unsigned char *p;
+  size_t x, y;
+
+  p = pixels;
+  for (y = 0; y < img_height; y++) {
+    for (x = 0; x < img_width; x++) {
+      mapDegree2Color(temperatures[y*4+x],p,p+1,p+2);
+      p+=3;
+    }
+  }
+  tga[2] = 2;
+  tga[12] = 255 & img_width;
+  tga[13] = 255 & (img_width >> 8);
+  tga[14] = 255 & img_height;
+  tga[15] = 255 & (img_height >> 8);
+  tga[16] = 24;
+  tga[17] = 32;
+
+  ir_img.buf=imageBuff;
+  ir_img.height=img_height;
+  ir_img.width=img_width;
+  ir_img.len=img_width*img_height*3+18;
+
+  return &ir_img;
+}
+
+
+MLX90621_img_t *createRGBImage(void) {
+
+  unsigned char *pixels= imageBuff;
+  unsigned char *p;
+  size_t x, y;
+
+  p = pixels;
+  for (y = 0; y < img_height; y++) {
+    for (x = 0; x < img_width; x++) {
+      mapDegree2Color(temperatures[y*4+x],p,p+1,p+2);
+      Serial.printf("%03d %02x %02x %02x \r\n ",y*4+x,p[0],p[1],p[2]);
+      p+=3;
+    }
+  }
+
+  ir_img.buf=imageBuff;
+  ir_img.height=img_height;
+  ir_img.width=img_width;
+  ir_img.len=img_width*img_height*3;
+
+  return &ir_img;
+}
+
+

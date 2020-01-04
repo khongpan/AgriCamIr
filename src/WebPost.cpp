@@ -10,23 +10,24 @@ void WebPostSetup() {
 
 }
 
-#define F(A)  String(A)
+//#define F(A)  String(A)
+#define toStr(A) String(A)
 String CreateHeader(size_t body_len)
 {
   String  data;
-      data =  F("POST /webpost0606/log_imgcap.php HTTP/1.1\r\n");
-      data += F("cache-control: no-cache\r\n");
-      data += F("Content-Type: multipart/form-data; boundary=");
+      data =  toStr("POST /webpost0606/log_imgcap.php HTTP/1.1\r\n");
+      data += toStr("cache-control: no-cache\r\n");
+      data += toStr("Content-Type: multipart/form-data; boundary=");
       data += BOUNDARY;
       data += "\r\n";
-      data += F("User-Agent: PostmanRuntime/6.4.1\r\n");
-      data += F("Accept: */*\r\n");
-      data += F("Host: ");
+      data += toStr("User-Agent: PostmanRuntime/6.4.1\r\n");
+      data += toStr("Accept: */*\r\n");
+      data += toStr("Host: ");
       data += SERVER;
-      data += F("\r\n");
-      data += F("accept-encoding: gzip, deflate\r\n");
-      data += F("Connection: keep-alive\r\n");
-      data += F("content-length: ");
+      data += toStr("\r\n");
+      data += toStr("accept-encoding: gzip, deflate\r\n");
+      data += toStr("Connection: keep-alive\r\n");
+      data += toStr("content-length: ");
       data += String(body_len);
       data += "\r\n";
       data += "\r\n";
@@ -38,7 +39,7 @@ String CreateBody(String name , String value)
   String data;
   data = "--";
   data += BOUNDARY;
-  data += F("\r\n");
+  data += toStr("\r\n");
   data += "Content-Disposition: form-data; name=\"" + name +"\"\r\n";
   data += "\r\n";
   data += value;
@@ -51,15 +52,15 @@ String CreateBody4File(String name , String filename)
   String data;
   data = "--";
   data += BOUNDARY;
-  data += F("\r\n");
-  data += F("Content-Disposition: form-data; name=\"" + name + "\"; filename=\"" + filename + "\"\r\n");
-  // data += F("Content-Disposition: form-data; name=\"" );
-  // data += F(name);
-  // data += F("\"; filename=\"");
-  // data += F(filename) ;
-  // data += F("\"\r\n");
-  data += F("Content-Type: image/jpeg\r\n");
-  data += F("\r\n");
+  data += toStr("\r\n");
+  data += toStr("Content-Disposition: form-data; name=\"" + name + "\"; filename=\"" + filename + "\"\r\n");
+  // data += toStr("Content-Disposition: form-data; name=\"" );
+  // data += toStr(name);
+  // data += toStr("\"; filename=\"");
+  // data += toStr(filename) ;
+  // data += toStr("\"\r\n");
+  data += toStr("Content-Type: image/jpeg\r\n");
+  data += toStr("\r\n");
   
   return(data);
 }

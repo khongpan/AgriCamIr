@@ -2,6 +2,15 @@
 
 #define MLX90621_H
 
+
+typedef struct {
+    uint8_t * buf;              /*!< Pointer to the pixel data */
+    size_t len;                 /*!< Length of the buffer in bytes */
+    size_t width;               /*!< Width of the buffer in pixels */
+    size_t height;              /*!< Height of the buffer in pixels */
+} MLX90621_img_t;
+
+
 void readEEPROM();
 void writeConfiguration();
 uint16_t readConfiguration();
@@ -19,9 +28,13 @@ uint16_t readWord(uint8_t address, uint8_t subAddress);
 void writeByte(uint8_t address, uint8_t subAddress, uint8_t data);
 uint8_t readByte(uint8_t address, uint8_t subAddress);
 void readBytes(uint8_t address, uint8_t subAddress, uint8_t count, uint8_t * dest);
+MLX90621_img_t *createTGAImage(void);
+MLX90621_img_t *createRGBImage(void);
 
 
 void MLX90621Setup();
-void MLX90621GetImage();
+MLX90621_img_t* MLX90621Capture();
+
+
 
 #endif
