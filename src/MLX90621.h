@@ -10,6 +10,12 @@ typedef struct {
     size_t height;              /*!< Height of the buffer in pixels */
 } MLX90621_img_t;
 
+typedef struct {
+    float * buf;              /*!< Pointer to the pixel data */
+    size_t len;                 /*!< Length of the buffer in bytes */
+    size_t width;               /*!< Width of the buffer in pixels */
+    size_t height;              /*!< Height of the buffer in pixels */
+} Normalized_Img_t;
 
 void readEEPROM();
 void writeConfiguration();
@@ -31,10 +37,14 @@ void readBytes(uint8_t address, uint8_t subAddress, uint8_t count, uint8_t * des
 MLX90621_img_t *createTGAImage(void);
 MLX90621_img_t *createRGBImage(void);
 
-
 void MLX90621Setup();
 MLX90621_img_t* MLX90621Capture();
-
+float *MLX90621GetCaptureTemp(void);
+MLX90621_img_t *MLX90621GetCaptureImage(void);
+float MLX90621GetCaptureAvgTemp(void);
+float MLX90621GetCaptureMinTemp(void);
+float MLX90621GetCaptureMaxTemp(void);
+float MLX90621GetCaptureTa(void);
 
 
 #endif

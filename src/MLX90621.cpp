@@ -6,7 +6,7 @@
 #include "MLX90621.h"
 
 
-
+TwoWire Wire2 = TwoWire(1);
 #define I2C_NOSTOP (false)
 
 // 64, 16-bit words for the 4 x 16 bit array
@@ -75,7 +75,7 @@ float k_t1, k_t2, emissivity, tgc, alpha_cp, a_cp, b_cp, v_th, tmpTemp, ks_scale
 uint16_t ptat;
 int16_t cpix;
 float a_ij, b_ij, alpha_ij;
-float minTemp, maxTemp, Tambient;
+float avgTemp, minTemp, maxTemp, Tambient;
 float temperatures[64]; //Contains the calculated temperatures of each pixel in the array
 int16_t irData[64];     //Contains the raw IR data from the sensor
 uint16_t color;
@@ -105,7 +105,7 @@ enum resolution {  // define IR Array resolution
 };
 
 // Define configuration
-  uint8_t refreshRate = IRRRate_1Hz; // set IR Array refresh rate
+  uint8_t refreshRate = IRRRate_4Hz; // set IR Array refresh rate
   uint8_t resolution =  ADC_18bit;   // set temperature resolution
   
 void MLX90621Setup() 
@@ -116,7 +116,7 @@ void MLX90621Setup()
 
 
   // Initialize i2C bus and check for devices on the bus
-  Wire.begin(21,22,10000);
+  Wire2.begin(21,22,10000);
 
   I2Cscan();
 
@@ -145,27 +145,27 @@ MLX90621_img_t* MLX90621Capture()
     readIR(); // get the raw data
   
     calculateTA(); // get ambient temperature
-    Serial.print("Ambient temperature = "); Serial.println(Tambient);
+    //Serial.print("Ambient temperature = "); Serial.println(Tambient);
     readCPIX(); // get pixel corrections
     calculateTO(); // compensate raw data to get 4 x 16 temperatures
 
     // Get min and max temperatures
     minTemp = 1000.;
     maxTemp =    0.;
-    float avgTemp=0;
+    float sumTemp=0;
     for(int x=0; x <16 ; x++){ //go through all the rows
       for(int y=0; y<4; y++){ //go through all the columns
         if(temperatures[y+x*4] > maxTemp) maxTemp = temperatures[y+x*4];
         if(temperatures[y+x*4] < minTemp) minTemp = temperatures[y+x*4];
-        avgTemp+=temperatures[y+x*4];
-        Serial.printf("pixel %02d %2.1f",y+x*4,temperatures[y+x*4]);
+        sumTemp+=temperatures[y+x*4];
+        //Serial.printf("pixel %02d %2.1f ",y+x*4,temperatures[y+x*4]);
       }
-        Serial.println("");
+        //Serial.println("");
     }
-    avgTemp = avgTemp/(4*16);
-    Serial.print("Min temperature="); Serial.println(minTemp);
-    Serial.print("Max temperature="); Serial.println(maxTemp);
-    Serial.print("Average temperature="); Serial.println(avgTemp);
+    avgTemp = sumTemp/(4*16);
+    //Serial.print("Min temperature="); Serial.println(minTemp);
+    //Serial.print("Max temperature="); Serial.println(maxTemp);
+    //Serial.print("Average temperature="); Serial.println(avgTemp);
 
     //return createTGAImage();
     return createRGBImage();
@@ -184,12 +184,12 @@ MLX90621_img_t* MLX90621Capture()
   void readEEPROM()
   {// Read the entire EEPROM
     for(int j=0; j<256; j+=32) {
-      Wire.beginTransmission(EEPROM_ADDRESS);
-      Wire.write(j);
-      byte rc = Wire.endTransmission(I2C_NOSTOP);
-      Wire.requestFrom(EEPROM_ADDRESS, 32);
+      Wire2.beginTransmission(EEPROM_ADDRESS);
+      Wire2.write(j);
+      byte rc = Wire2.endTransmission(I2C_NOSTOP);
+      Wire2.requestFrom(EEPROM_ADDRESS, 32);
       for (int i = 0; i < 32; i++) {
-        eepromData[j+i] = (uint8_t) Wire.read();
+        eepromData[j+i] = (uint8_t) Wire2.read();
       }
     }
   }
@@ -197,41 +197,41 @@ MLX90621_img_t* MLX90621Capture()
 void writeConfiguration()
 {
     // Write MLX90621 configuration register
-    Wire.beginTransmission(MLX90621_ADDRESS);
-    Wire.write(0x03);                                           // transmit Op Code for Configuration file write
-    Wire.write( ((resolution << 4) | (refreshRate))  - 0x55);   // transmit LSB check
-    Wire.write( ((resolution << 4) | (refreshRate)) );          // transmit LSB data
-    Wire.write(0x46 - 0x55);                                    // transmit MSB check
-    Wire.write(0x46);                                           // transmit MSB, 0x46 default
-    Wire.endTransmission();
+    Wire2.beginTransmission(MLX90621_ADDRESS);
+    Wire2.write(0x03);                                           // transmit Op Code for Configuration file write
+    Wire2.write( ((resolution << 4) | (refreshRate))  - 0x55);   // transmit LSB check
+    Wire2.write( ((resolution << 4) | (refreshRate)) );          // transmit LSB data
+    Wire2.write(0x46 - 0x55);                                    // transmit MSB check
+    Wire2.write(0x46);                                           // transmit MSB, 0x46 default
+    Wire2.endTransmission();
 }
 
 
 uint16_t readConfiguration()
 {
     //Read MLX90621 configuration register
-    Wire.beginTransmission(MLX90621_ADDRESS);
-    Wire.write(0x02);           // transmit Op Code for register read
-    Wire.write(MLX90621_CONF);  // transmit address for Configuration register
-    Wire.write(0x00);           // transmit address step for Configuration register
-    Wire.write(0x01);           // transmit number of words to be read
-    Wire.endTransmission(I2C_NOSTOP);
-    Wire.requestFrom(MLX90621_ADDRESS, 2);
-    uint8_t dataLSB = Wire.read();  // read LSB of Configuration register
-    uint8_t dataMSB = Wire.read();  // read MSB of Configuration register
+    Wire2.beginTransmission(MLX90621_ADDRESS);
+    Wire2.write(0x02);           // transmit Op Code for register read
+    Wire2.write(MLX90621_CONF);  // transmit address for Configuration register
+    Wire2.write(0x00);           // transmit address step for Configuration register
+    Wire2.write(0x01);           // transmit number of words to be read
+    Wire2.endTransmission(I2C_NOSTOP);
+    Wire2.requestFrom(MLX90621_ADDRESS, 2);
+    uint8_t dataLSB = Wire2.read();  // read LSB of Configuration register
+    uint8_t dataMSB = Wire2.read();  // read MSB of Configuration register
     uint16_t data = ( (uint16_t) dataMSB << 8) | dataLSB;
     return data;
 }
 
 
 void   writeOSCTrim() {
-  Wire.beginTransmission(MLX90621_ADDRESS);
-  Wire.write(0x04);
-  Wire.write(eepromData[OSC_TRIM] - 0xAA);
-  Wire.write(eepromData[OSC_TRIM]);
-  Wire.write(0x56);
-  Wire.write(0x00);
-  Wire.endTransmission();
+  Wire2.beginTransmission(MLX90621_ADDRESS);
+  Wire2.write(0x04);
+  Wire2.write(eepromData[OSC_TRIM] - 0xAA);
+  Wire2.write(eepromData[OSC_TRIM]);
+  Wire2.write(0x56);
+  Wire2.write(0x00);
+  Wire2.endTransmission();
 }
 
 
@@ -277,30 +277,30 @@ void calculateConstants() {
 
 void readPTAT() 
 {
-  Wire.beginTransmission(MLX90621_ADDRESS);
-  Wire.write(0x02);
-  Wire.write(0x40);
-  Wire.write(0x00);
-  Wire.write(0x01);
-  Wire.endTransmission(I2C_NOSTOP);
-  Wire.requestFrom(MLX90621_ADDRESS, 2);
-  uint8_t ptatLSB  = Wire.read();
-  uint8_t ptatMSB = Wire.read();
+  Wire2.beginTransmission(MLX90621_ADDRESS);
+  Wire2.write(0x02);
+  Wire2.write(0x40);
+  Wire2.write(0x00);
+  Wire2.write(0x01);
+  Wire2.endTransmission(I2C_NOSTOP);
+  Wire2.requestFrom(MLX90621_ADDRESS, 2);
+  uint8_t ptatLSB  = Wire2.read();
+  uint8_t ptatMSB = Wire2.read();
   ptat = ((uint16_t)ptatMSB << 8) | ptatLSB;
 }
 
 void readIR() {
-  for (int j = 0; j < 64; j += 16) { // Read in blocks of 32 bytes to overcome Wire buffer limit
-    Wire.beginTransmission(MLX90621_ADDRESS);
-    Wire.write(0x02);
-    Wire.write(j);
-    Wire.write(0x01);
-    Wire.write(0x20);
-    Wire.endTransmission(I2C_NOSTOP);
-    Wire.requestFrom(MLX90621_ADDRESS, 32);
+  for (int j = 0; j < 64; j += 16) { // Read in blocks of 32 bytes to overcome Wire2 buffer limit
+    Wire2.beginTransmission(MLX90621_ADDRESS);
+    Wire2.write(0x02);
+    Wire2.write(j);
+    Wire2.write(0x01);
+    Wire2.write(0x20);
+    Wire2.endTransmission(I2C_NOSTOP);
+    Wire2.requestFrom(MLX90621_ADDRESS, 32);
     for (int i = 0; i < 16; i++) {
-      uint8_t pixelDataLSB = Wire.read();
-      uint8_t pixelDataMSB = Wire.read();
+      uint8_t pixelDataLSB = Wire2.read();
+      uint8_t pixelDataMSB = Wire2.read();
       irData[j + i] = ((int16_t)pixelDataMSB << 8) | pixelDataLSB;
     }
   }
@@ -311,15 +311,15 @@ float getAmbient() {
 }
 
 void readCPIX() {
-  Wire.beginTransmission(MLX90621_ADDRESS);
-  Wire.write(0x02);
-  Wire.write(0x41);
-  Wire.write(0x00);
-  Wire.write(0x01);
-  Wire.endTransmission(I2C_NOSTOP);
-  Wire.requestFrom(MLX90621_ADDRESS, 2);
-  byte cpixLow = Wire.read();
-  byte cpixHigh = Wire.read();
+  Wire2.beginTransmission(MLX90621_ADDRESS);
+  Wire2.write(0x02);
+  Wire2.write(0x41);
+  Wire2.write(0x00);
+  Wire2.write(0x01);
+  Wire2.endTransmission(I2C_NOSTOP);
+  Wire2.requestFrom(MLX90621_ADDRESS, 2);
+  byte cpixLow = Wire2.read();
+  byte cpixHigh = Wire2.read();
   cpix = ((int16_t)cpixHigh << 8) | cpixLow;
 }
 
@@ -373,8 +373,8 @@ void I2Cscan()
     // The i2c_scanner uses the return value of
     // the Write.endTransmisstion to see if
     // a device did acknowledge to the address.
-    Wire.beginTransmission(address);
-    error = Wire.endTransmission();
+    Wire2.beginTransmission(address);
+    error = Wire2.endTransmission();
 
     if (error == 0)
     {
@@ -405,52 +405,52 @@ void I2Cscan()
 
   void writeWord(uint8_t address, uint8_t subAddress, uint16_t data)
 {
-  Wire.beginTransmission(address);  // Initialize the Tx buffer
-  Wire.write(subAddress);           // Put slave register address in Tx buffer
-  Wire.write((data & 0xFF00) << 8); // Put data MSB in Tx buffer
-  Wire.write(data & 0x00FF);        // Put data LSB in Tx buffer
-  Wire.endTransmission();           // Send the Tx buffer
+  Wire2.beginTransmission(address);  // Initialize the Tx buffer
+  Wire2.write(subAddress);           // Put slave register address in Tx buffer
+  Wire2.write((data & 0xFF00) << 8); // Put data MSB in Tx buffer
+  Wire2.write(data & 0x00FF);        // Put data LSB in Tx buffer
+  Wire2.endTransmission();           // Send the Tx buffer
 }
 
   uint16_t readWord(uint8_t address, uint8_t subAddress)
 {
   uint16_t data; // `data` will store the register data   
-  Wire.beginTransmission(address);  // Initialize the Tx buffer
-  Wire.write(subAddress);           // Put slave register address in Tx buffer
-  Wire.endTransmission(I2C_NOSTOP);        // Send the Tx buffer, but send a restart to keep connection alive
-  Wire.requestFrom(address, (size_t) 1);   // Read one word from slave register address 
-  data = Wire.read();                      // Fill Rx buffer with result
+  Wire2.beginTransmission(address);  // Initialize the Tx buffer
+  Wire2.write(subAddress);           // Put slave register address in Tx buffer
+  Wire2.endTransmission(I2C_NOSTOP);        // Send the Tx buffer, but send a restart to keep connection alive
+  Wire2.requestFrom(address, (size_t) 1);   // Read one word from slave register address 
+  data = Wire2.read();                      // Fill Rx buffer with result
   return data; 
 }
 
   void writeByte(uint8_t address, uint8_t subAddress, uint8_t data)
 {
-  Wire.beginTransmission(address);  // Initialize the Tx buffer
-  Wire.write(subAddress);           // Put slave register address in Tx buffer
-  Wire.write(data);                 // Put data in Tx buffer
-  Wire.endTransmission();           // Send the Tx buffer
+  Wire2.beginTransmission(address);  // Initialize the Tx buffer
+  Wire2.write(subAddress);           // Put slave register address in Tx buffer
+  Wire2.write(data);                 // Put data in Tx buffer
+  Wire2.endTransmission();           // Send the Tx buffer
 }
 
   uint8_t readByte(uint8_t address, uint8_t subAddress)
 {
   uint8_t data; // `data` will store the register data   
-  Wire.beginTransmission(address);         // Initialize the Tx buffer
-  Wire.write(subAddress);                  // Put slave register address in Tx buffer
-  Wire.endTransmission(I2C_NOSTOP);        // Send the Tx buffer, but send a restart to keep connection alive
-  Wire.requestFrom(address, (size_t) 1);   // Read one byte from slave register address 
-  data = Wire.read();                      // Fill Rx buffer with result
+  Wire2.beginTransmission(address);         // Initialize the Tx buffer
+  Wire2.write(subAddress);                  // Put slave register address in Tx buffer
+  Wire2.endTransmission(I2C_NOSTOP);        // Send the Tx buffer, but send a restart to keep connection alive
+  Wire2.requestFrom(address, (size_t) 1);   // Read one byte from slave register address 
+  data = Wire2.read();                      // Fill Rx buffer with result
   return data;                             // Return data read from slave register
 }
 
 void readBytes(uint8_t address, uint8_t subAddress, uint8_t count, uint8_t * dest)
 {  
-  Wire.beginTransmission(address);   // Initialize the Tx buffer
-  Wire.write(subAddress);            // Put slave register address in Tx buffer
-  Wire.endTransmission(I2C_NOSTOP);  // Send the Tx buffer, but send a restart to keep connection alive
+  Wire2.beginTransmission(address);   // Initialize the Tx buffer
+  Wire2.write(subAddress);            // Put slave register address in Tx buffer
+  Wire2.endTransmission(I2C_NOSTOP);  // Send the Tx buffer, but send a restart to keep connection alive
   uint8_t i = 0;
-        Wire.requestFrom(address, (size_t) count);  // Read bytes from slave register address 
-  while (Wire.available()) {
-        dest[i++] = Wire.read(); }         // Put read results in the Rx buffer
+        Wire2.requestFrom(address, (size_t) count);  // Read bytes from slave register address 
+  while (Wire2.available()) {
+        dest[i++] = Wire2.read(); }         // Put read results in the Rx buffer
 }
 
 // adapted from http://www.andrewnoske.com/wiki/Code_-_heatmaps_and_color_gradients
@@ -494,18 +494,8 @@ void mapDegree2Color(float temp,unsigned char *r,unsigned char *g, unsigned char
   *r= (unsigned char)round(rr*255);
   *g= (unsigned char)round(gg*255);
   *b= (unsigned char)round(bb*255);
-
-
-
 }
 
-/*
-void mapDegree2Color(float temp,unsigned char *r,unsigned char *g, unsigned char *b) {
-  *r = temp*255/50.0;
-  *g = 0;
-  *b = 0;
-}
-*/
 
 
 enum { img_width = 4, img_height = 16 };
@@ -552,7 +542,7 @@ MLX90621_img_t *createRGBImage(void) {
   for (y = 0; y < img_height; y++) {
     for (x = 0; x < img_width; x++) {
       mapDegree2Color(temperatures[y*4+x],p,p+1,p+2);
-      Serial.printf("%03d %02x %02x %02x \r\n ",y*4+x,p[0],p[1],p[2]);
+      //Serial.printf("%03d %02x %02x %02x \r\n ",y*4+x,p[0],p[1],p[2]);
       p+=3;
     }
   }
@@ -565,4 +555,22 @@ MLX90621_img_t *createRGBImage(void) {
   return &ir_img;
 }
 
+MLX90621_img_t *MLX90621GetCaptureImage(void) {
+  return &ir_img;
+}
+float *MLX90621GetCaptureTemp(void) {
+  return temperatures;
+}
 
+float MLX90621GetCaptureAvgTemp(void) {
+  return avgTemp;
+}
+float MLX90621GetCaptureMinTemp(void) {
+  return minTemp;
+}
+float MLX90621GetCaptureMaxTemp(void) {
+  return maxTemp;
+}
+float MLX90621GetCaptureTa(void) {
+  return Tambient;
+}
