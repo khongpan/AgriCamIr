@@ -480,7 +480,7 @@ void getHeatMapColor(float value, float *red, float *green, float *blue)
 }
 
 #define MAX_TEMP 35
-#define MIN_TEMP 15
+#define MIN_TEMP 25
 void mapDegree2Color(float temp,unsigned char *r,unsigned char *g, unsigned char *b) {
   float rr,gg,bb;
   float temp_n;

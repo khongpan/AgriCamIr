@@ -25,8 +25,8 @@
 #define LED 33
 String my_id_str = "__agricam00__1000__100";
 String pict_folder = "/pict/";
-const char* ssid = "ssid";
-const char* password = "magicword";
+const char* ssid = "FlyFly";
+const char* password = "flyuntildie";
 
 
 void startCameraServer();
@@ -115,7 +115,7 @@ void OLEDsetup() {
   Wire.begin(4,15);
   Heltec.display->init();
   Heltec.display->clear();
-  //Heltec.display->flipScreenVertically();
+  Heltec.display->flipScreenVertically();
   //Heltec.display->mirrorScreen();
   Heltec.display->setFont(ArialMT_Plain_24);
   Heltec.display->setTextAlignment(TEXT_ALIGN_LEFT);
@@ -129,6 +129,8 @@ void setup() {
   Serial.begin(115200);
   Serial.setDebugOutput(true);
   Serial.println();
+
+  pinMode(0,INPUT); 
 
   pinMode(LED,OUTPUT_OPEN_DRAIN);
   OLEDsetup();
@@ -197,9 +199,10 @@ int get_jpg_size() {
 float img_data[SCREEN_WIDTH*SCREEN_HEIGHT];
 Normalized_Img_t display_img;
 
-#define MIN_TEMP 27
-#define MAX_TEMP 32
-#define T2G(d)  (d-MIN_TEMP)/(MAX_TEMP-MIN_TEMP)
+#define MIN_TEMP 28
+#define MAX_TEMP 33
+#define T2G(d)  ((d)-MIN_TEMP)/(MAX_TEMP-MIN_TEMP)
+#define EST(xx,xx1,yy1,xx2,yy2) ( yy1 + (((xx)-(xx1))*((yy2)-(yy1))/((xx2)-(xx1))) )
 
 Normalized_Img_t *IrData2ScreenImg()  {
   int x,y,i,j;
@@ -214,21 +217,75 @@ Normalized_Img_t *IrData2ScreenImg()  {
   display_img.height=64;
   display_img.width=128;
   display_img.buf = img_data;
+  int i_w=4;
+  int i_h=16;
 
-  for (y = 0; y < 16; y++) {
-    for (x = 0; x < 4; x++) {
-       color=T2G(t[y*4+x]);
-       if (color>1) color=1;
-       if (color<0) color=0;
+  for (y = 0; y < i_h; y++) {
+    //Serial.println("");
+    for (x = 0; x < i_w; x++) {
+
+      float ul,ur,ll,lr;
+
+      ul=ll=ur=lr=0;
+ 
+      if( (y < (i_h-1)) && (x < (i_w-1)) ) {
+        ul=T2G(t[y*4+x]);
+        ll=T2G(t[y*4+x+1]);
+        ur=T2G(t[(y+1)*4+x]);
+        lr=T2G(t[(y+1)*4+x+1]);
+        //Serial.printf("%2.1f,%2.1f,%2.1f,%2.1f ",ul,ur,ll,lr);
+        
+      }else if ((x==i_w-1) && (y==i_h-1))  {
+        ul=T2G(t[y*4+x]);
+        ll=T2G(2*t[y*4+x]-t[y*4+x-1]);
+        ur=T2G(2*t[y*4+x]-t[(y-1)*4+x]);
+        lr=T2G(2*t[y*4+x]-t[(y-1)*4+x-1]);
+      }else if (x==i_w-1) {
+        ul=T2G(t[y*4+x]);
+        ll=T2G(2*t[y*4+x]-t[y*4+x-1]);
+        ur=T2G(t[(y+1)*4+x]);
+        if(y!=0) {
+          lr=T2G(2*t[y*4+x]-t[(y-1)*4+x-1]);
+        }else {
+          //lr= ul+((ur-ul)+(lr-ul))/2;
+          lr=(ur+lr)/2;
+        }
+
+        //Serial.printf("%d,%d,%2.1f,%2.1f,%2.1f,%2.1f \r\n",x,y,ul,ll,ur,lr);
+      }else if (y==i_h-1) {
+        ul=T2G(t[y*4+x]);
+        ll=T2G(t[y*4+x+1]);
+        ur=T2G(2*t[y*4+x]-t[(y-1)*4+x]);
+        lr=T2G(2*t[y*4+x]-t[(y-1)*4+x-1]);
+      }else {
+        Serial.print("!!!wrong mapping impossible!!!");
+      }
+
+  
+       //color=T2G(t[y*4+x]);
+       //if (color>1) color=1;
+       //if (color<0) color=0;
+
        ox=(15-y)*8;
        oy=x*16;
        for(j=0;j<16;j++) {
+
+         float l=EST(j,0,ul,15,ll);
+         float r=EST(j,0,ur,15,lr);
+         //Serial.printf("%2.1f,%2.1f ",l,r);
+
          for(i=0;i<8;i++) {
-           display_img.buf[(oy+j)*128+(ox+i)]=color;
+          color=EST(i,0,l,7,r);
+          if(color>1) color=1;
+          else if (color<0) color=0;
+          display_img.buf[(oy+j)*128+(ox+(7-i))]=color;
          }
        }
+       //Serial.println("");
     }
   }
+
+  //for(;;);
 
   return &display_img;
 }
@@ -300,6 +357,7 @@ void ShowImg() {
   //Serial.println("DitheringImg");
   img=DitheringImage(img);
   //Serial.println("DisplayImg");
+
   Heltec.display->clear();
   for(y=0;y<SCREEN_HEIGHT;y++) {
     for(x=0;x<SCREEN_WIDTH;x++) {
@@ -307,17 +365,29 @@ void ShowImg() {
        Heltec.display->setPixel(x,y);
     }
   }
-  Heltec.display->setBrightness(255);
+  //Heltec.display->flipScreenVertically();
+  //Heltec.display->mirrorScreen();
+  //Heltec.display->setBrightness(255);
   Heltec.display->display();
   
+}
+
+void UpdateDisplay() {
+  if (digitalRead(0)==0) {
+    ShowSummary();
+  } else {
+    ShowImg();
+  }
+  
+
 }
 
 void loop() {
   //Serial.println("Ir image Capture");
   MLX90621Capture();
   //Serial.println("OLED update...");
-  //UpdateDisplay();
-  ShowImg();
+  UpdateDisplay();
+  //ShowImg();
   delay(10);
 }
 
@@ -339,11 +409,11 @@ void do_job() {
     vTaskDelay(100);
     getLocalTime(&t, 5000);
     if (pic_cnt>0) {
-      if (((t.tm_min % 5 != 0) || (t.tm_sec != 0))) return;
+      //if (((t.tm_min % 5 != 0) || (t.tm_sec != 0))) return;
       //if (((t.tm_min % 5 != 4) || (t.tm_sec != 55))) return;
       //if (((t.tm_min % 15 != 14) || (t.tm_sec != 55))) return;
       //if (((t.tm_min  != 0) || (t.tm_sec != 0))) return; //every hour
-      //if (t.tm_sec != 0) return; //every minute
+      if (t.tm_sec != 0) return; //every minute
       //if (t.tm_sec%10 !=0) return;
     }
   }
