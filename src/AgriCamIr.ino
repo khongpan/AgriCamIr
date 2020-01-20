@@ -25,8 +25,8 @@
 #define LED 33
 String my_id_str = "__agricam00__1000__100";
 String pict_folder = "/pict/";
-const char* ssid = "FlyFly";
-const char* password = "flyuntildie";
+const char* ssid = "ssid";
+const char* password = "password";
 
 
 void startCameraServer();
@@ -101,15 +101,6 @@ void TimeSync() {
 
 }
 
-void task_main(void *p) {
-  esp_task_wdt_delete(NULL);  
-  while(1) {
-    esp_task_wdt_reset();
-
-    do_job();
-    delay(100);
-  }
-}
 
 void OLEDsetup() {
   Wire.begin(4,15);
@@ -122,37 +113,7 @@ void OLEDsetup() {
 }
 
 
-void setup() {
 
-  //WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0); //disable brownout detector
-  Heltec.begin(true /*DisplayEnable Enable*/, false /*LoRa Disable*/, true /*Serial Enable*/);
-  Serial.begin(115200);
-  Serial.setDebugOutput(true);
-  Serial.println();
-
-  pinMode(0,INPUT); 
-
-  pinMode(LED,OUTPUT_OPEN_DRAIN);
-  OLEDsetup();
-  //StorageSetup();
-  MLX90621Setup();
-  MLX90621Capture();
-  //CameraSetup();
-
-  WiFi.begin(ssid, password);
-  delay(1000);
-  NetMaintain();
-  TimeSync();
-
-  //startCameraServer();
-  Serial.print("Camera Ready! Use 'http://");
-  Serial.print(WiFi.localIP());
-  Serial.println("' to connect");
-
-  static TaskHandle_t loopTaskHandle = NULL;
-  xTaskCreateUniversal(task_main, "task_main", 50000, NULL, 1, &loopTaskHandle, CONFIG_ARDUINO_RUNNING_CORE);
- 
-}
  
 
 
@@ -195,12 +156,12 @@ int get_jpg_size() {
 
 
 #define SCREEN_WIDTH 128
-#define SCREEN_HEIGHT 64
+#define SCREEN_HEIGHT 32
 float img_data[SCREEN_WIDTH*SCREEN_HEIGHT];
 Normalized_Img_t display_img;
 
-#define MIN_TEMP 28
-#define MAX_TEMP 33
+#define MIN_TEMP 26
+#define MAX_TEMP 36
 #define T2G(d)  ((d)-MIN_TEMP)/(MAX_TEMP-MIN_TEMP)
 #define EST(xx,xx1,yy1,xx2,yy2) ( yy1 + (((xx)-(xx1))*((yy2)-(yy1))/((xx2)-(xx1))) )
 
@@ -214,8 +175,8 @@ Normalized_Img_t *IrData2ScreenImg()  {
 
   t=MLX90621GetCaptureTemp();
 
-  display_img.height=64;
-  display_img.width=128;
+  display_img.height=SCREEN_HEIGHT;
+  display_img.width=SCREEN_WIDTH;
   display_img.buf = img_data;
   int i_w=4;
   int i_h=16;
@@ -267,11 +228,11 @@ Normalized_Img_t *IrData2ScreenImg()  {
        //if (color<0) color=0;
 
        ox=(15-y)*8;
-       oy=x*16;
-       for(j=0;j<16;j++) {
+       oy=x*8;
+       for(j=0;j<8;j++) {
 
-         float l=EST(j,0,ul,15,ll);
-         float r=EST(j,0,ur,15,lr);
+         float l=EST(j,0,ul,7,ll);
+         float r=EST(j,0,ur,7,lr);
          //Serial.printf("%2.1f,%2.1f ",l,r);
 
          for(i=0;i<8;i++) {
@@ -295,7 +256,7 @@ Normalized_Img_t *IrData2ScreenImg()  {
  Normalized_Img_t* DitheringImage(Normalized_Img_t *img) {
 
   float *buf=img->buf;
-  int nrow=64;
+  int nrow=32;
   int ncol=128;
 
   #define a(y,x) (buf[(y)*128+(x)])
@@ -306,10 +267,18 @@ Normalized_Img_t *IrData2ScreenImg()  {
           if (P>1) P=1;
           float e = a(i, j) - P;
           a(i, j) = P;
-          a(i, j+1) = a(i, j+1) + (e * 7/16);
-          a(i+1, j-1) = a(i+1, j-1) + (e * 3/16);
-          a(i+1, j) = a(i+1, j) + (e * 5/16);
-          a(i+1, j+1) = a(i+1, j+1) + (e * 1/16);
+
+          /* Floyd-Steinberg dithering */
+          // a(i, j+1) = a(i, j+1) + (e * 7/16);
+          // a(i+1, j-1) = a(i+1, j-1) + (e * 3/16);
+          // a(i+1, j) = a(i+1, j) + (e * 5/16);
+          // a(i+1, j+1) = a(i+1, j+1) + (e * 1/16);
+
+          /* False Floyd-Steinberg dithering */
+          a(i, j+1) = a(i, j+1) + (e * 3.0/9);
+          a(i+1, j) = a(i+1, j) + (e * 3.0/9);
+          a(i+1, j+1) = a(i+1, j+1) + (e * 3.0/9);
+  
           //Serial.printf("%1.0f",a(i,j));
           
       }
@@ -348,6 +317,34 @@ void ShowSummary(void) {
 
 }
 
+void ShowMiniSummary(void) {
+  static char str[100];
+  float min,max,avg,amb;
+  min=MLX90621GetCaptureMinTemp();
+  max=MLX90621GetCaptureMaxTemp();
+  avg=MLX90621GetCaptureAvgTemp();
+  amb=MLX90621GetCaptureTa();
+  
+  // Heltec.display->clear();
+  // Heltec.display->setFont(ArialMT_Plain_10);
+  // Heltec.display->drawString(0,10,String("MLX90621 far Ir sensor"));
+
+  Heltec.display->setFont(ArialMT_Plain_24);
+  sprintf(str,"%2.1f c",avg);
+  Heltec.display->drawString(0,32,String(str));
+
+  Heltec.display->setFont(ArialMT_Plain_10);
+  sprintf(str,"%2.1f %2.1f",min,max);
+  Heltec.display->drawString(68,32,String(str));
+
+  //Heltec.display->setFont(ArialMT_Plain_10);
+  sprintf(str,"Ta=%2.1f",amb);
+  Heltec.display->drawString(68,42,String(str));
+    
+  //Heltec.display->display();
+
+}
+
 
 void ShowImg() {
   int x,y;
@@ -362,12 +359,13 @@ void ShowImg() {
   for(y=0;y<SCREEN_HEIGHT;y++) {
     for(x=0;x<SCREEN_WIDTH;x++) {
       if(img->buf[y*SCREEN_WIDTH+x]>0.5)
-       Heltec.display->setPixel(x,y);
+       Heltec.display->setPixel(SCREEN_WIDTH-x,SCREEN_HEIGHT-y);
     }
   }
   //Heltec.display->flipScreenVertically();
   //Heltec.display->mirrorScreen();
   //Heltec.display->setBrightness(255);
+  ShowMiniSummary();
   Heltec.display->display();
   
 }
@@ -382,14 +380,7 @@ void UpdateDisplay() {
 
 }
 
-void loop() {
-  //Serial.println("Ir image Capture");
-  MLX90621Capture();
-  //Serial.println("OLED update...");
-  UpdateDisplay();
-  //ShowImg();
-  delay(10);
-}
+
 
 void do_job() {
 
@@ -490,3 +481,67 @@ void do_job() {
 
 }
 
+
+void task_display(void *p) {
+  while(1) {
+    //Serial.println("Ir image Capture");
+    MLX90621Capture();
+    //Serial.println("OLED update...");
+    UpdateDisplay();
+    //ShowImg();
+    delay(10);
+  }
+}
+
+
+
+void task_main(void *p) {
+  esp_task_wdt_delete(NULL);  
+  while(1) {
+    esp_task_wdt_reset();
+    do_job();
+    delay(100);
+  }
+}
+
+
+void setup() {
+
+  //WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0); //disable brownout detector
+  Heltec.begin(true /*DisplayEnable Enable*/, false /*LoRa Disable*/, true /*Serial Enable*/);
+  Serial.begin(115200);
+  Serial.setDebugOutput(true);
+  Serial.println();
+
+  pinMode(0,INPUT); 
+
+  pinMode(LED,OUTPUT_OPEN_DRAIN);
+  OLEDsetup();
+  //StorageSetup();
+  MLX90621Setup();
+  MLX90621Capture();
+  //CameraSetup();
+
+  static TaskHandle_t loopTaskHandle = NULL;
+  xTaskCreateUniversal(task_display, "task_display", 10000, NULL, 1, &loopTaskHandle, CONFIG_ARDUINO_RUNNING_CORE);
+
+
+  WiFi.begin(ssid, password);
+  delay(1000);
+  NetMaintain();
+  TimeSync();
+
+  //startCameraServer();
+  Serial.print("Camera Ready! Use 'http://");
+  Serial.print(WiFi.localIP());
+  Serial.println("' to connect");
+
+  //static TaskHandle_t loopTaskHandle = NULL;
+  xTaskCreateUniversal(task_main, "task_main", 50000, NULL, 1, &loopTaskHandle, CONFIG_ARDUINO_RUNNING_CORE);
+
+ 
+}
+
+void loop() {
+  delay(1000);
+}
