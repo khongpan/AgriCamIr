@@ -3,10 +3,15 @@
 //https://github.com/kriswiner/MLX90621/blob/master/MLX90621IRArray.ino
 #include <Arduino.h>
 #include <Wire.h>
+//#include "SoftwareWire.h" //partial work
+//#include <SoftWire.h>
 #include "MLX90621.h"
 
-
+//#define write(b) write((uint8_t)(b))
+//SoftWire Wire2(21,22);
+//SoftwareWire Wire2(19,23,true,false);
 TwoWire Wire2 = TwoWire(1);
+//#define Wire2 Wire1
 #define I2C_NOSTOP (false)
 
 // 64, 16-bit words for the 4 x 16 bit array
@@ -75,8 +80,9 @@ float k_t1, k_t2, emissivity, tgc, alpha_cp, a_cp, b_cp, v_th, tmpTemp, ks_scale
 uint16_t ptat;
 int16_t cpix;
 float a_ij, b_ij, alpha_ij;
-float avgTemp, minTemp, maxTemp, Tambient;
+float avgTemp, minTemp, maxTemp, Tambient, medianTemp;
 float temperatures[64]; //Contains the calculated temperatures of each pixel in the array
+float sorted_temp[64];
 int16_t irData[64];     //Contains the raw IR data from the sensor
 uint16_t color;
 uint8_t rgb, red, green, blue;
@@ -107,18 +113,37 @@ enum resolution {  // define IR Array resolution
 // Define configuration
   uint8_t refreshRate = IRRRate_4Hz; // set IR Array refresh rate
   uint8_t resolution =  ADC_18bit;   // set temperature resolution
+
   
 void MLX90621Setup() 
 {
+  
 
-  Serial.print("MLX90621 4 x 16 IR Array");
+  Serial.println("Init MLX90621 4 x 16 IR Array sensor");
 
-
+  avgTemp=maxTemp=minTemp=Tambient=0;
+  for(int i=0;i<63;i++) {
+    temperatures[i]=i;
+  }
 
   // Initialize i2C bus and check for devices on the bus
-  Wire2.begin(21,22,10000);
+  Wire2.begin(19,23,10000);
+  //Wire2.begin(21,22,10000);
 
-  I2Cscan();
+  //SoftwareWire
+  //Wire2.setClock(100000);
+  //Wire2.begin();
+  
+  //SoftWire
+  //Wire2.setDelay_us(5);
+  //Wire2.setClock(10000);
+  //Wire2.enablePullups(true);
+  //Wire2.setTxBuffer(txbuff,255);
+  //Wire2.setRxBuffer(rxbuff,255);
+  //Wire2.begin();
+  
+
+  //I2Cscan();
 
    // Initialization of the MLX90621
     readEEPROM();// Read the entire EEPROM
@@ -133,12 +158,17 @@ void MLX90621Setup()
 }
 /* End of setup*/
 
+int tcmp(const void *a, const void *b) {
+    return((*(float*)a)- *((float *)b));
+}
+
 MLX90621_img_t* MLX90621Capture() 
 {
     if(!(readConfiguration() & 0x0400)){ // if POR bit cleared, reinitialize
       readEEPROM();
       writeOSCTrim();
       writeConfiguration();
+      //Serial.println("MLX90621 por reset");
     }
     
     readPTAT(); 
@@ -158,6 +188,7 @@ MLX90621_img_t* MLX90621Capture()
         if(temperatures[y+x*4] > maxTemp) maxTemp = temperatures[y+x*4];
         if(temperatures[y+x*4] < minTemp) minTemp = temperatures[y+x*4];
         sumTemp+=temperatures[y+x*4];
+        //sorted_temp[y+x*4]=temperatures[y+x*4];
         //Serial.printf("pixel %02d %2.1f ",y+x*4,temperatures[y+x*4]);
       }
         //Serial.println("");
@@ -168,6 +199,8 @@ MLX90621_img_t* MLX90621Capture()
     //Serial.print("Average temperature="); Serial.println(avgTemp);
 
     //return createTGAImage();
+    //qsort(sorted_temp,64,sizeof(float),tcmp);
+    medianTemp=sorted_temp[48];
     return createRGBImage();
 
     //delay(100);  // give some time to see the screen values
@@ -573,4 +606,7 @@ float MLX90621GetCaptureMaxTemp(void) {
 }
 float MLX90621GetCaptureTa(void) {
   return Tambient;
+}
+float MLX90621GetCaptureMedianTemp(void) {
+  return medianTemp;
 }

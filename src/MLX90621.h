@@ -17,6 +17,13 @@ typedef struct {
     size_t height;              /*!< Height of the buffer in pixels */
 } Normalized_Img_t;
 
+typedef struct {
+    int16_t * buf;              /*!< Pointer to the pixel data */
+    size_t len;                 /*!< Length of the buffer in bytes */
+    size_t width;               /*!< Width of the buffer in pixels */
+    size_t height;              /*!< Height of the buffer in pixels */
+} Gray_Img_t;
+
 void readEEPROM();
 void writeConfiguration();
 uint16_t readConfiguration();
@@ -45,6 +52,8 @@ float MLX90621GetCaptureAvgTemp(void);
 float MLX90621GetCaptureMinTemp(void);
 float MLX90621GetCaptureMaxTemp(void);
 float MLX90621GetCaptureTa(void);
+float MLX90621GetCaptureMedianTemp(void);
+
 
 
 #endif

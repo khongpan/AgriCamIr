@@ -103,7 +103,7 @@ void TimeSync() {
 
 
 void OLEDsetup() {
-  Wire.begin(4,15);
+  //Wire.begin(4,15,10000000);
   Heltec.display->init();
   Heltec.display->clear();
   Heltec.display->flipScreenVertically();
@@ -157,20 +157,27 @@ int get_jpg_size() {
 
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 32
-float img_data[SCREEN_WIDTH*SCREEN_HEIGHT];
-Normalized_Img_t display_img;
+int16_t img_data[SCREEN_WIDTH*SCREEN_HEIGHT];
+Gray_Img_t display_img;
 
-#define MIN_TEMP 26
-#define MAX_TEMP 36
-#define T2G(d)  ((d)-MIN_TEMP)/(MAX_TEMP-MIN_TEMP)
+#define MIN_TEMP (minT)
+#define MAX_TEMP (maxT)
+#define T2G(d)  (((d)-MIN_TEMP)*255/(MAX_TEMP-MIN_TEMP))
 #define EST(xx,xx1,yy1,xx2,yy2) ( yy1 + (((xx)-(xx1))*((yy2)-(yy1))/((xx2)-(xx1))) )
 
-Normalized_Img_t *IrData2ScreenImg()  {
+Gray_Img_t *IrData2ScreenImg()  {
   int x,y,i,j;
   int ox,oy;
 
   float *t;
-  float color;
+  int color;
+
+  float minT=MLX90621GetCaptureMinTemp()+1.8;
+  float maxT=MLX90621GetCaptureMaxTemp();
+  //float minT=26;
+  //float maxT=36;
+
+  if(maxT<=(minT+1)) maxT=minT+1;
 
 
   t=MLX90621GetCaptureTemp();
@@ -185,7 +192,7 @@ Normalized_Img_t *IrData2ScreenImg()  {
     //Serial.println("");
     for (x = 0; x < i_w; x++) {
 
-      float ul,ur,ll,lr;
+      int16_t ul,ur,ll,lr;
 
       ul=ll=ur=lr=0;
  
@@ -231,13 +238,13 @@ Normalized_Img_t *IrData2ScreenImg()  {
        oy=x*8;
        for(j=0;j<8;j++) {
 
-         float l=EST(j,0,ul,7,ll);
-         float r=EST(j,0,ur,7,lr);
+         int16_t l=EST(j,0,ul,7,ll);
+         int16_t r=EST(j,0,ur,7,lr);
          //Serial.printf("%2.1f,%2.1f ",l,r);
 
          for(i=0;i<8;i++) {
           color=EST(i,0,l,7,r);
-          if(color>1) color=1;
+          if(color>255) color=255;
           else if (color<0) color=0;
           display_img.buf[(oy+j)*128+(ox+(7-i))]=color;
          }
@@ -253,9 +260,9 @@ Normalized_Img_t *IrData2ScreenImg()  {
 
 
 //adapted from JEFworks https://gist.github.com/JEFworks/637308c2a1dd8a6faff7b6264104847a
- Normalized_Img_t* DitheringImage(Normalized_Img_t *img) {
+ Gray_Img_t* DitheringImage(Gray_Img_t *img) {
 
-  float *buf=img->buf;
+  int16_t *buf=img->buf;
   int nrow=32;
   int ncol=128;
 
@@ -263,9 +270,12 @@ Normalized_Img_t *IrData2ScreenImg()  {
 
     for (int i = 0; i < nrow-1; i++) {
       for (int j = 1; j < ncol-1; j++) {
-          int P = trunc(a(i, j)+0.5);
-          if (P>1) P=1;
-          float e = a(i, j) - P;
+          int p=a(i, j);
+          int P;
+
+          if(p>127) P=255; else P=0;
+          
+          int e = p - P;
           a(i, j) = P;
 
           /* Floyd-Steinberg dithering */
@@ -275,9 +285,9 @@ Normalized_Img_t *IrData2ScreenImg()  {
           // a(i+1, j+1) = a(i+1, j+1) + (e * 1/16);
 
           /* False Floyd-Steinberg dithering */
-          a(i, j+1) = a(i, j+1) + (e * 3.0/9);
-          a(i+1, j) = a(i+1, j) + (e * 3.0/9);
-          a(i+1, j+1) = a(i+1, j+1) + (e * 3.0/9);
+          a(i, j+1) = a(i, j+1) + ((e * 3) / 8);
+          a(i+1, j) = a(i+1, j) + ((e * 3) / 8);
+          a(i+1, j+1) = a(i+1, j+1) + ((e * 2)/8);
   
           //Serial.printf("%1.0f",a(i,j));
           
@@ -348,7 +358,7 @@ void ShowMiniSummary(void) {
 
 void ShowImg() {
   int x,y;
-  Normalized_Img_t *img;
+  Gray_Img_t *img;
   //Serial.println("IrData2ScreenImg");
   img=IrData2ScreenImg();
   //Serial.println("DitheringImg");
@@ -358,8 +368,10 @@ void ShowImg() {
   Heltec.display->clear();
   for(y=0;y<SCREEN_HEIGHT;y++) {
     for(x=0;x<SCREEN_WIDTH;x++) {
-      if(img->buf[y*SCREEN_WIDTH+x]>0.5)
+      //if ((x+y) % 2 == 0) Heltec.display->setPixel(x,y);
+      if(img->buf[y*SCREEN_WIDTH+x]>127)
        Heltec.display->setPixel(SCREEN_WIDTH-x,SCREEN_HEIGHT-y);
+       
     }
   }
   //Heltec.display->flipScreenVertically();
@@ -482,18 +494,25 @@ void do_job() {
 }
 
 
-void task_display(void *p) {
+void task_camera(void *p) {
   while(1) {
     //Serial.println("Ir image Capture");
     MLX90621Capture();
+    delay(10);
+  }
+}
+
+
+void task_display(void *p) {
+  while(1) {
+    //Serial.println("Ir image Capture");
+    //MLX90621Capture();
     //Serial.println("OLED update...");
     UpdateDisplay();
     //ShowImg();
     delay(10);
   }
 }
-
-
 
 void task_main(void *p) {
   esp_task_wdt_delete(NULL);  
@@ -507,8 +526,7 @@ void task_main(void *p) {
 
 void setup() {
 
-  //WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0); //disable brownout detector
-  Heltec.begin(true /*DisplayEnable Enable*/, false /*LoRa Disable*/, true /*Serial Enable*/);
+  //WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0); //disable brownout detector  Heltec.begin(true /*DisplayEnable Enable*/, false /*LoRa Disable*/, true /*Serial Enable*/);
   Serial.begin(115200);
   Serial.setDebugOutput(true);
   Serial.println();
@@ -519,10 +537,11 @@ void setup() {
   OLEDsetup();
   //StorageSetup();
   MLX90621Setup();
-  MLX90621Capture();
+  //MLX90621Capture();
   //CameraSetup();
 
   static TaskHandle_t loopTaskHandle = NULL;
+  xTaskCreateUniversal(task_camera, "task_camera", 10000, NULL, 1, &loopTaskHandle, CONFIG_ARDUINO_RUNNING_CORE);
   xTaskCreateUniversal(task_display, "task_display", 10000, NULL, 1, &loopTaskHandle, CONFIG_ARDUINO_RUNNING_CORE);
 
 
