@@ -127,8 +127,9 @@ void MLX90621Setup()
   }
 
   // Initialize i2C bus and check for devices on the bus
-  Wire2.begin(19,23,10000);
+  //Wire2.begin(19,23,10000);
   //Wire2.begin(21,22,10000);
+  Wire2.begin(13,12,10000);
 
   //SoftwareWire
   //Wire2.setClock(100000);
