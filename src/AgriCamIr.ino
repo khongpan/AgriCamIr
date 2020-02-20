@@ -16,6 +16,7 @@
 #include "WebPost.h"
 #include "MLX90621.h"
 #include "toojpeg.h"
+#include "PictBuff.h"
 
 //
 // WARNING!!! Make sure that you have either selected ESP32 Wrover Module,
@@ -137,18 +138,7 @@ String GetCurrentTimeString() {
 
 int pic_cnt=0;
 int capture_retry=0;
-unsigned char jpg_pict_buff[1024];
-int jpg_pict_buff_index=0;
-void write_jpg_pict_buff(unsigned char byte) {
-  jpg_pict_buff[jpg_pict_buff_index++]=byte;
-  //Serial.print(byte);
-}
-void reset_jpg_pict_buff() {
-  jpg_pict_buff_index=0;
-}
-int get_jpg_size() {
-  return jpg_pict_buff_index;
-}
+
 
 
 
@@ -482,7 +472,7 @@ void do_job() {
     send_try++;
     Serial.println("try " + String(send_try));
     //res=WebPostSendImage(img_name,time_str,fb->buf,fb->len);
-    res=WebPostSendImage(img_name,time_str,jpg_pict_buff,get_jpg_size());
+    res=WebPostSendImage(img_name,time_str,(uint8_t *)get_jpg_pict_buff(),get_jpg_size());
     Serial.println("Server Response:");
     Serial.print(res);
   } while(res!="ok" && (send_try < 10));
