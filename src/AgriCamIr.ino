@@ -434,7 +434,8 @@ void do_job() {
 
   
   //img=MLX90621Capture();
-  img = MLX90621GetCaptureImage();
+  //img = MLX90621GetCaptureImage();
+  img = get_rgb_pict_buff();
   
   reset_jpg_pict_buff();
   //static char comments[] = "MLX90621 image";
@@ -488,6 +489,7 @@ void task_camera(void *p) {
   while(1) {
     //Serial.println("Ir image Capture");
     MLX90621Capture();
+    createRGBImage(MLX90621GetCaptureTemp());
     delay(10);
   }
 }
